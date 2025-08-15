@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Case Data Viewer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         .container {
             padding: 20px;
@@ -91,13 +92,14 @@
     </div>
 
     <script>
-        let allData = [];
+        // Initialize variables
+        let tableData = [];
         let currentPage = 1;
         let rowsPerPage = 10;
-        let filteredData = [];
         
         async function loadData() {
             try {
+                // Fetch CSV data
                 const response = await fetch('data/cases.csv');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -105,76 +107,74 @@
                 const data = await response.text();
                 const rows = data.split('\n');
                 const headers = rows[0].split(',');
+
+                // Store data
+                tableData = rows.slice(1)
+                    .filter(row => row.trim() !== '')
+                    .map(row => row.split(','));
+
+                // Create table structure
+                let tableHTML = `
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                ${headers.map(header => `
+                                    <th>${header}</th>
+                                `).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                // Add initial rows
+                displayFilteredData(tableData);
                 
-                // Populate column select
-                const columnSelect = document.getElementById('columnSelect');
-                columnSelect.innerHTML = '<option value="all">All Columns</option>';
-                headers.forEach((header, index) => {
-                    columnSelect.innerHTML += `<option value="${index}">${header}</option>`;
+                // Setup search functionality
+                document.getElementById('searchInput').addEventListener('input', function(e) {
+                    const searchText = e.target.value.toLowerCase();
+                    const filteredData = tableData.filter(row =>
+                        row.some(cell => cell.toLowerCase().includes(searchText))
+                    );
+                    displayFilteredData(filteredData);
                 });
 
-                // Parse data
-                allData = rows.slice(1).filter(row => row.trim() !== '').map(row => row.split(','));
-                filteredData = [...allData];
-                
-                let tableHTML = '<table class="table table-striped table-hover"><thead><tr>';
-                headers.forEach(header => {
-                    tableHTML += `<th class="sortable" data-sort="${header}">${header} <span class="sort-icon">↕</span></th>`;
-                });
-                tableHTML += '</tr></thead><tbody>';
-
-                updateTable();
-                setupEventListeners();
             } catch (error) {
                 console.error('Error loading the CSV file:', error);
-                document.getElementById('tableContainer').innerHTML = '<div class="alert alert-danger">Error loading data: ' + error.message + '</div>';
+                document.getElementById('tableContainer').innerHTML = 
+                    '<div class="alert alert-danger">Error loading data: ' + error.message + '</div>';
             }
         }
 
-        function updateTable() {
+        function displayFilteredData(data) {
             const start = (currentPage - 1) * rowsPerPage;
-            const end = rowsPerPage === 'all' ? filteredData.length : start + parseInt(rowsPerPage);
-            const paginatedData = filteredData.slice(start, end);
+            const end = Math.min(start + rowsPerPage, data.length);
+            const paginatedData = data.slice(start, end);
             
-            let tableHTML = '';
-            paginatedData.forEach(row => {
-                tableHTML += '<tr>';
-                row.forEach(cell => {
-                    tableHTML += `<td>${cell}</td>`;
-                });
-                tableHTML += '</tr>';
-            });
+            const tbody = document.querySelector('#tableContainer tbody');
+            tbody.innerHTML = paginatedData.map(row => `
+                <tr>
+                    ${row.map(cell => `<td>${cell}</td>`).join('')}
+                </tr>
+            `).join('');
             
-            document.querySelector('#tableContainer tbody').innerHTML = tableHTML;
-            updatePagination();
+            updatePagination(Math.ceil(data.length / rowsPerPage));
         }
 
-        function updatePagination() {
-            const totalPages = rowsPerPage === 'all' ? 1 : Math.ceil(filteredData.length / rowsPerPage);
+        function updatePagination(totalPages) {
             const pagination = document.getElementById('pagination');
-            let paginationHTML = '';
-            
-            // Previous button
-            paginationHTML += `
+            pagination.innerHTML = `
                 <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                    <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
-                </li>`;
-            
-            // Page numbers
-            for (let i = 1; i <= totalPages; i++) {
-                paginationHTML += `
-                    <li class="page-item ${currentPage === i ? 'active' : ''}">
-                        <a class="page-link" href="#" data-page="${i}">${i}</a>
-                    </li>`;
-            }
-            
-            // Next button
-            paginationHTML += `
+                    <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>
+                </li>
+                ${Array.from({ length: totalPages }, (_, i) => i + 1).map(page => `
+                    <li class="page-item ${currentPage === page ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="changePage(${page})">${page}</a>
+                    </li>
+                `).join('')}
                 <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                    <a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>
-                </li>`;
-            
-            pagination.innerHTML = paginationHTML;
+                    <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>
+                </li>
+            `;
         }
 
         function setupEventListeners() {
@@ -218,6 +218,15 @@
             });
         }
 
+        function changePage(page) {
+            if (page >= 1 && page <= Math.ceil(tableData.length / rowsPerPage)) {
+                currentPage = page;
+                displayFilteredData(tableData);
+            }
+            return false;
+        }
+
+        // Initialize the table when the page loads
         window.onload = loadData;
     </script>
 </body>
